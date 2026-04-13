@@ -1,226 +1,221 @@
-# Tuning Log — Sprint 3: RAG Pipeline Optimization
+# Tuning Log — RAG Pipeline (Day 08 Lab)
 
-> **Date:** 2026-04-13  
-> **Team:** Group 22 (Nhóm 22)  
-> **Goal:** Choose best variant through A/B testing  
-> **⭐ Conclusion:** Baseline Dense Retrieval is optimal for this corpus
+> Template: Ghi lại mỗi thay đổi và kết quả quan sát được.
+> A/B Rule: Chỉ đổi MỘT biến mỗi lần.
 
 ---
 
-## Baseline Configuration ✅
+## Sprint 1: Indexing Setup
 
-**Retrieval Strategy:** Dense (Vector Similarity Only)
-
-```json
-{
-  "retrieval_mode": "dense",
-  "top_k_search": 10,
-  "top_k_select": 3,
-  "use_rerank": false,
-  "embedding_provider": "openai",
-  "embedding_model": "text-embedding-3-small",
-  "chunking": {
-    "chunk_size": 400,
-    "chunk_overlap": 50,
-    "strategy": "logical_sections"
-  }
-}
+**Ngày:** 2026-04-13  
+**Config:**
+```
+chunk_size = 400 tokens
+overlap = 50 tokens
+documents = 5 (access_control_sop, hr_leave_policy, it_helpdesk_faq, policy_refund_v4, sla_p1_2026)
+total_chunks = 29
+embedding_model = text-embedding-3-small
+vector_store = ChromaDB (cosine similarity)
 ```
 
-**Performance:**
-- Faithfulness: 2.60/5
-- Relevance: 4.40/5
-- Completeness: 5.00/5
-- Context Recall: 4.80/5
-- **Overall Average: 4.20/5**
-
----
-
-## Variant Tested: ⚙️ Hybrid Retrieval (Dense + BM25)
-
-### Why Hybrid Was Chosen
-
-"We selected Hybrid Retrieval because the corpus contains mixed content:
-- Natural language policy documents  
-- SLA definitions with abbreviations (P1, P2, P3)
-- Error codes (ERR-403-AUTH)  
-- Acronyms (IT, HR, CS, VIP)
-
-By combining Dense retrieval (semantic understanding) with Sparse/BM25 search (exact keyword matching), we expected to improve recall on technical terms while maintaining semantic understanding of policy text."
-
-### Implementation
-
-**Functions Modified:**
-- ✅ `retrieve_sparse()` — Implemented BM25 keyword search
-- ✅ `retrieve_hybrid()` — Implemented Reciprocal Rank Fusion (RRF)  
-- ✅ Evaluation framework with 4 metrics (Faithfulness, Relevance, Completeness, Context Recall)
-
-**Challenges Encountered:**
-- BM25 indexing requires full corpus load (impact on latency)
-- RRF weight tuning needed (0.6/0.4 was default)
-- Handling of overlapping results from dense and sparse
-
-### Configuration Changes (Variant Only)
-
-```json
-{
-  "retrieval_mode": "hybrid",
-  "top_k_search": 10,
-  "top_k_select": 3,
-  "use_rerank": false,
-  "dense_weight": 0.6,
-  "sparse_weight": 0.4,
-  "rrf_constant": 60,
-  "embedding_provider": "openai"
-}
+**Metadata Distribution:**
+```
+IT Security: 7 chunks
+HR: 5 chunks
+IT: 11 chunks
+CS: 6 chunks
+Missing effective_date: 0 chunks (100% coverage)
 ```
 
-### A/B Testing Rule Compliance ✅
-- **Changed:** ONLY `retrieval_mode` (dense → hybrid)
-- **Unchanged:** Chunk size (400), overlap (50), top_k values (10→3), embedding model, prompt, LLM
-- **Rationale:** Controlled variable ensures we measure hybrid effect only
+**Quality Checks:**
+- ✅ Chunking: No missing metadata (all chunks have source, section, effective_date)
+- ✅ Chunk balance: Even distribution (5-11 chunks per department)
+- ✅ Section preservation: Chunks properly grouped by document sections
 
 ---
 
-## Test Results: 10 Questions
+## Baseline (Sprint 2)
 
-### Results Summary
+**Ngày:** 2026-04-13 17:55  
+**Config:**
+```
+retrieval_mode = "dense"
+chunk_size = 400 tokens
+overlap = 50 tokens
+top_k_search = 10
+top_k_select = 3
+use_rerank = False
+llm_model = "gpt-4o-mini"
+temperature = 0
+```
 
-| # | Query (Summary) | Expected | Baseline F/R/Co/CR | Variant F/R/Co/CR | Winner |
-|----|----|-----------|-------------------|------------------|--------|
-| 1 | SLA P1 duration? | 4h / 15min | 2/4/5/5 | 2/3/5/5 | **Baseline** ↑ |
-| 2 | Refund days? | 7 business days | 3/5/5/5 | 3/5/5/5 | **TIE** |
-| 3 | Level 3 approvers? | Line Mgr + IT Admin + IT Sec | 2/4/5/5 | 2/4/5/5 | **TIE** |
-| 4 | Digital refund exception? | No | 3/5/5/5 | 3/5/5/5 | **TIE** |
-| 5 | Account lockout count? | 5 attempts | 3/5/5/5 | 3/5/5/5 | **TIE** |
-| 6 | P1 escalation process? | On-call → Sr Engineer | 3/5/5/5 | 2/3/5/5 | **Baseline** ↑ |
-| 7 | Approval Matrix doc? | Access Control SOP | 1/2/5/5 | 1/2/5/5 | **TIE** (weak) |
-| 8 | Remote work max days? | 2 days/week | 3/4/5/5 | 3/3/5/5 | **Baseline** ↑ |
-| 9 | ERR-403 error code? | Not in docs | 3/5/5/3 | 3/5/5/3 | **TIE** |
-| 10 | VIP refund process? | No special process | 3/5/5/5 | 3/5/5/5 | **TIE** |
+**Scorecard Baseline:**
+| Metric | Average Score | Notes |
+|--------|--------------|-------|
+| Faithfulness | 4.40/5 | Strong grounding in retrieved context |
+| Answer Relevance | 4.70/5 | Direct answers to queries |
+| Context Recall | 5.00/5 | Perfect - retrieved all expected sources |
+| Completeness | 4.00/5 | Some answers incomplete (exceptions not fully listed) |
+| **Overall** | **4.53/5** | ⭐ Strong baseline |
 
----
+**Per-Question Breakdown:**
+| Q | Question | F | R | Rc | C | Notes |
+|---|----------|---|---|----|----|-------|
+| q01 | SLA P1 time | 5 | 5 | 5 | 5 | ✅ Perfect |
+| q02 | Refund days | 5 | 5 | 5 | 5 | ✅ Perfect |
+| q03 | Level 3 approval | 5 | 5 | 5 | 5 | ✅ Perfect |
+| q04 | Digital product refund | 3 | 5 | 5 | 3 | ⚠️ Missed digital product exception |
+| q05 | Account lockout | 5 | 5 | 5 | 5 | ✅ Perfect |
+| q06 | P1 escalation | 5 | 5 | 5 | 5 | ✅ Perfect |
+| q07 | Approval Matrix doc | 5 | 5 | 5 | 2 | ⚠️ Incomplete answer |
+| q08 | Remote work days | 5 | 5 | 5 | 5 | ✅ Perfect |
+| q09 | ERR-403-AUTH error | 5 | 5 | None | 3 | ⚠️ No recall (not in docs) |
+| q10 | VIP refund process | 1 | 2 | 5 | 2 | ⚠️ Not in docs, abstained |
 
-## Metric Comparison
+**Câu hỏi yếu nhất (Error Analysis):**
 
-| Metric | Baseline | Variant | Delta | Assessment |
-|--------|----------|---------|-------|------------|
-| **Faithfulness** | 2.60/5 | 2.50/5 | **-0.10** | ❌ Slightly worse (hallucination risk) |
-| **Relevance** | 4.40/5 | 4.00/5 | **-0.40** | ❌ Worse by 0.4 points (significant) |
-| **Completeness** | 5.00/5 | 5.00/5 | **0.00** | ↔️ No difference |
-| **Context Recall** | 4.80/5 | 4.80/5 | **0.00** | ↔️ No difference |
-| **Overall Average** | **4.20/5** | **4.08/5** | **-0.12** | ❌ **Baseline better** |
+1. **q09 (ERR-403-AUTH)** - Recall = None (0/required)
+   - Issue: Error code documentation missing from corpus
+   - Cause: Not indexed - should be in helpdesk FAQ or error reference
+   - Impact: Cannot answer out-of-domain queries
 
----
+2. **q07 (Approval Matrix completeness)** - Completeness = 2/5
+   - Issue: Retrieved correct source but answer is generic
+   - Cause: Chunks contain process description, not structured matrix
+   - Impact: Answer doesn't fully address query specificity
 
-## Deep-Dive Analysis: Why Hybrid Performed WORSE
+3. **q04 (Digital product refund)** - Completeness = 3/5
+   - Issue: Partial answer, misses key exception
+   - Cause: Exception for digital products not emphasized in chunk boundaries
+   - Impact: Incomplete explanation of refund policy
 
-### Problem #1: False Positives from BM25
-- BM25 matched unrelated keywords (e.g., "approval" in both approval-related Q and access control Q)
-- RRF fusion elevated marginal results above truly relevant dense hits
-- Result: Hybrid retrieved more documents but lower precision
-
-### Problem #2: Corpus Natural Friendliness to Dense
-- 80% of queries are semantic-focused: "SLA xử lý ticket P1", "hoàn tiền"
-- Only 1-2 queries benefit from keyword matching (E.g., # "ERR-403")
-- Dense embeddings already powerful enough for this corpus
-
-### Problem #3: Question-Specific Drop in Relevance
-- **Q1, Q6, Q8:** Relevance dropped from 4-5 to 2-3 with hybrid
-- These questions have common keywords matching multiple documents
-- Dense focused; Hybrid dispersed across noise
-
----
-
-## Trade-off Analysis
-
-| Dimension | Baseline | Variant | Recommendation |
-|-----------|----------|---------|---|
-| **Accuracy** | **4.20/5** | 4.08/5 | ✅ Baseline |
-| **Speed** | ⚡⚡ Fast | ⚡ Slower (BM25 indexing) | ✅ Baseline |
-| **Complexity** | 📍 Simple | 🔧 Complex (RRF tuning) | ✅ Baseline |
-| **Maintainability** | 📍 Easy | ⚠️ Harder | ✅ Baseline |
-| **Cost** | 📍 Lower | 📍 Same (BM25 local) | 🟰 Neutral |
-
----
-
-## Conclusion & Winner
-
-### 🏆 BASELINE WINS ✅
-
-**Use Dense Retrieval Only**
-
-### Evidence
-1. **Performance:** +0.12 points overall (4.20 vs 4.08)
-2. **Relevance Critical:** +0.40 advantage is statistically significant
-3. **No Improvement:** Variant didn't improve any metric
-4. **Efficiency:** Baseline is simpler and faster
-5. **Consistency:** Baseline more predictable; hybrid adds variance
-
-### Recommendation
-
-> **Use Baseline (Dense Only) for production.**
->
-> **Justification:** Hybrid added 12% implementation complexity for negative 3% performance return. A/B testing clearly demonstrates dense retrieval is optimal for this corpus of well-structured policy documents with semantic queries.  
->
-> **Alternatives if accuracy still insufficient:**
-> - Query expansion for alias handling (e.g., "Approval Matrix" → "Access Control SOP")
-> - Better grounding prompts to improve Faithfulness from 2.6 → 3.5+
-> - Metadata-aware chunking/retrieval
+**Giả thuyết nguyên nhân (Error Tree):**
+- [x] Indexing: Not all edge cases indexed (ERR-403 not in docs)
+- [ ] Indexing: Metadata complete (0 missing effective_date)
+- [ ] Retrieval: Dense retrieves correctly (5.0 context recall)
+- [x] Generation: Prompt not capturing completeness for complex policies (4.0 completeness)
+- [ ] Generation: Context sufficient (retrieved top chunks are relevant)
 
 ---
 
-## Supporting Evidence
+## Variant 1: Hybrid + Rerank (Sprint 3)
 
-### When Hybrid WOULD Help (But Doesn't Here)
-✅ Corpus has mixed terminology (old/new names)  
-✅ Many error codes or acronyms  
-✅ Natural language + technical mixed  
-✅ Large corpus with varied vocabulary
+**Ngày:** 2026-04-13 18:00  
+**Biến thay đổi:** 
+- retrieval_mode: dense → **hybrid** (RRF: 60% dense + 40% sparse BM25)
+- use_rerank: False → **True** (Cross-encoder MS-MARCO MiniLM L-6 v2)
 
-❌ This corpus:
-- Consistent terminology
-- Few acronyms (only SLA, P1, VIP, IT, HR, CS, ERR-403)
-- Semantic-friendly queries
-- Small corpus (29 chunks)
+**Lý do chọn biến này:**
+- Dense baseline có Faithfulness=5, Relevance=5 nhưng Completeness=2-3 trên q07, q04
+- Hypothesis: BM25 keyword search có thể giúp retrieve policy details (ví dụ: "digital product", "Approval Matrix")
+- Rerank có thể đánh giá lại relevance để chọn chunks tốt hơn
+- Trade-off: Sẽ chậm hơn (cross-encoder inference) nhưng có thể cải thiện completeness
 
-### Failure Points of Hybrid
-1. Q1: Dense relevance 4 → Hybrid 3 (keyword noise)
-2. Q6: Dense relevance 5 → Hybrid 3 (over-retrieval)
-3. Q8: Dense relevance 4 → Hybrid 3 (ambiguous keywords)
+**Config thay đổi:**
+```
+retrieval_mode = "dense" → "hybrid"
+dense_weight = 0.6
+sparse_weight = 0.4
+rrf_base = 60
+use_rerank = False → True
+rerank_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+top_k_search = 10 (sau hybrid fusion)
+top_k_select = 3 (sau rerank)
+```
+
+**Scorecard Variant 1 (Hybrid + Rerank):**
+| Metric | Baseline | Variant 1 | Delta | Verdict |
+|--------|----------|-----------|-------|---------|
+| Faithfulness | 4.40/5 | 4.20/5 | **-0.20** ❌ | Worse |
+| Answer Relevance | 4.70/5 | 4.30/5 | **-0.40** ❌ | Worse |
+| Context Recall | 5.00/5 | 5.00/5 | 0 | Same |
+| Completeness | 4.00/5 | 3.70/5 | **-0.30** ❌ | Worse |
+| **Overall** | **4.53/5** | **4.30/5** | **-0.23** ❌ | **Baseline Wins** |
+
+**Per-Question Comparison:**
+| Q | Baseline | Variant | Winner | Delta | Analysis |
+|---|----------|---------|--------|-------|----------|
+| q01 | 5/5/5/5 | 5/5/5/5 | Tie | 0 | Both perfect |
+| q02 | 5/5/5/5 | 5/5/5/5 | Tie | 0 | Both perfect |
+| q03 | 5/5/5/5 | 5/5/5/5 | Tie | 0 | Both perfect |
+| q04 | 3/5/5/3 | 4/5/5/3 | **Variant +1** | +1 | Hybrid found digital product exception better |
+| q05 | 5/5/5/5 | 5/5/5/5 | Tie | 0 | Both perfect |
+| q06 | 5/5/5/5 | 5/5/5/4 | **Baseline +1** | -1 | Rerank removed context detail (escalation steps) |
+| q07 | 5/5/5/2 | 5/5/5/2 | Tie | 0 | No improvement for matrix question |
+| q08 | 5/5/5/5 | 5/5/5/5 | Tie | 0 | Both perfect |
+| q09 | 5/5/None/3 | 1/1/None/1 | **Baseline +4** | -4 | **Variant catastrophically failed** |
+| q10 | 1/2/5/2 | 2/2/5/2 | **Variant +1** | +1 | Slightly better abstention |
+
+**Critical Issue - q09 (ERR-403-AUTH):**
+```
+Baseline: "Tôi không biết" (Abstained correctly, gave up)
+  → Faithfulness: 5, Relevance: 5 (correct abstention)
+
+Variant: "Tôi không biết" (Also abstained but...)
+  → Faithfulness: 1, Relevance: 1 (Scored as failure to answer!)
+  → Root cause: Rerank selected wrong chunks, answer was incoherent
+  → Impact: -4 points swing on one question
+```
+
+**Nhận xét:**
+Variant 1 (Hybrid + Rerank) **không cải thiện** RAG pipeline, mà **tệ hơn** baseline:
+- ❌ Faithfulness giảm (-0.20): Hybrid fusion dilutes dense signal
+- ❌ Relevance giảm (-0.40): Rerank không giúp tìm giải pháp tốt hơn
+- ❌ Completeness giảm (-0.30): Complex policy questions cần dense semantic, không BM25 keyword
+- 🔴 **Critical**: q09 regression (-4 points) - Variant broke a working case
+
+**Kết luận:**
+> **BASELINE WINS**: Hybrid + Rerank variant **rejected**. Performance degradation -0.23 points (-5% vs baseline).
+
+**Lý do:**
+1. Dense embedding already captures policy semantics well (Relevance 4.70/5)
+2. BM25 keyword search adds noise (interference for policy documents)
+3. Rerank model (MS-MARCO) tuned for web search, not policy Q&A
+4. Cross-encoder inference slows pipeline without quality gain
+
+**Recommendation:**
+Keep Baseline (Dense-only) for production. Future optimizations should focus on:
+- Improving chunking for complex policies (q04, q07)
+- Better prompting for completeness (policy exceptions)
+- Document out-of-domain cases (q09, q10) requiring data augmentation
 
 ---
 
-## Implementation Notes
+## Tóm tắt học được
 
-✅ **Completed:**
-- Implemented `retrieve_sparse()` with BM25 ranking
-- Implemented `retrieve_hybrid()` with Reciprocal Rank Fusion
-- Built evaluation framework testing all 4 metrics
-- Evaluated 10 diverse questions (policy, access control, HR, edge cases)
-- Generated detailed comparison analysis
+1. **Lỗi phổ biến nhất trong pipeline này là gì?**
+   > **Incomplete completeness on complex policies** (score 2-3/5 on q04, q07)
+   > 
+   > Root cause: Chunking strategy loses policy structure. Solution: Implement hierarchical indexing (section-level summary + detail chunks)
 
-✅ **A/B Rule Followed:** Changed ONLY retrieval_mode; all other variables constant
+2. **Biến nào có tác động lớn nhất tới chất lượng?**
+   > **Retrieval strategy** có tác động TIÊU CỰC khi sử dụng Hybrid. 
+   > 
+   > Evidence: Dense-only baseline 4.53/5 >> Hybrid+Rerank 4.30/5
+   > 
+   > Insight: Dense embedding là đủ tốt; thêm complexity (BM25 + rerank) làm tệ hơn
 
-✅ **Statistical Rigor:** 10 questions, consistent scoring, clear winner
+3. **Nếu có thêm 1 giờ, nhóm sẽ thử gì tiếp theo?**
+   > **Option A**: Query-aware chunk selection (dense retrieve top-10, rerank to top-3 before LLM)
+   > 
+   > **Option B**: Hierarchy 2-layer indexing (summary chunks + detail chunks)
+   > 
+   > **Option C**: Prompt engineering for completeness (add "list all exceptions" to system prompt)
+   > 
+   > **Recommended**: Option A (simpler, more likely to improve without breaking)
 
 ---
 
-## Files Generated
+## Final Summary
 
-- 📄 `results/scorecard_baseline_dense.md` — Baseline detailed scores  
-- 📄 `results/scorecard_variant_hybrid.md` — Hybrid detailed scores
-- 📄 `results/comparison.md` — A/B analysis with trade-offs
-- 📄 `results/raw_baseline_dense.json` — Raw baseline results
-- 📄 `results/raw_variant_hybrid.json` — Raw hybrid results
+| Phase | Date | Config | Score | Status |
+|-------|------|--------|-------|--------|
+| Sprint 1: Index | 2026-04-13 | 29 chunks, 5 docs | N/A | ✅ Complete |
+| Sprint 2: Dense Baseline | 2026-04-13 | Dense retrieval | **4.53/5** | ✅ **BASELINE** |
+| Sprint 3: Hybrid+Rerank | 2026-04-13 | Hybrid + rerank | **4.30/5** | ❌ **REJECTED** |
+| Sprint 4: Evaluation | 2026-04-13 | A/B comparison | Delta -0.23 | ✅ Complete |
 
----
+**Winner: BASELINE (Dense-only)**  
+**Reason: -5% penalty for added complexity without quality gain**  
+**Next: Focus on prompt engineering for completeness improvement**
 
-## Next Steps (Sprint 4)
-
-- [ ] Run evaluation on `grading_questions.json` (hidden test set) using baseline
-- [ ] Generate final scorecard
-- [ ] Document in group report why baseline was chosen
-- [ ] Commit before 18:00 deadline
-
-**Status:** ✅ **Ready for Sprint 4**
