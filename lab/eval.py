@@ -153,7 +153,7 @@ def score_context_recall(
         retrieved_sources = ["policy/refund-v4.pdf", "helpdesk-faq.md"]
         recall = 1/2 = 0.5
 
-    TODO Sprint 4:
+    #TODO Sprint 4:
     1. Lấy danh sách source từ chunks_used
     2. Kiểm tra xem expected_sources có trong retrieved sources không
     3. Tính recall score
@@ -261,7 +261,7 @@ def run_scorecard(
     Returns:
         List scorecard results, mỗi item là một row
 
-    TODO Sprint 4:
+    #TODO Sprint 4:
     1. Load test_questions từ data/test_questions.json
     2. Với mỗi câu hỏi:
        a. Gọi rag_answer() với config tương ứng
@@ -362,7 +362,7 @@ def compare_ab(
     """
     So sánh baseline vs variant theo từng câu hỏi và tổng thể.
 
-    TODO Sprint 4:
+    #TODO Sprint 4:
     Điền vào bảng sau để trình bày trong báo cáo:
 
     | Metric          | Baseline | Variant | Delta |
@@ -443,7 +443,7 @@ def generate_scorecard_summary(results: List[Dict], label: str) -> str:
     """
     Tạo báo cáo tóm tắt scorecard dạng markdown.
 
-    TODO Sprint 4: Cập nhật template này theo kết quả thực tế của nhóm.
+    #TODO Sprint 4: Cập nhật template này theo kết quả thực tế của nhóm.
     """
     metrics = ["faithfulness", "relevance", "context_recall", "completeness"]
     averages = {}
